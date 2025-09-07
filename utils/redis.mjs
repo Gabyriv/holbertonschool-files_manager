@@ -1,16 +1,16 @@
 // utils/redis.mjs
 
-import redis from "redis";
-import { promisify } from "util";
+import redis from 'redis';
+import { promisify } from 'util';
 
 class RedisClient {
   constructor() {
     this.client = redis.createClient();
-    this.client.on("error", (err) => {
-      console.error("Redis connection error:", err);
+    this.client.on('error', (err) => {
+      console.error('Redis connection error:', err);
     });
-    this.client.on("end", () => {
-      console.log("Redis connection closed");
+    this.client.on('end', () => {
+      console.log('Redis connection closed');
     });
 
     this.getAsync = promisify(this.client.get).bind(this.client);
@@ -27,7 +27,7 @@ class RedisClient {
       const value = await this.getAsync(key);
       return value;
     } catch (err) {
-      console.error("Redis GET error:", err);
+      console.error('Redis GET error:', err);
       return null;
     }
   }
@@ -38,7 +38,7 @@ class RedisClient {
       await this.setexAsync(key, duration, value);
       return true;
     } catch (err) {
-      console.error("Redis SETEX error:", err);
+      console.error('Redis SETEX error:', err);
       return false;
     }
   }
@@ -48,7 +48,7 @@ class RedisClient {
       await this.delAsync(key);
       return true;
     } catch (err) {
-      console.error("Redis DEL error:", err);
+      console.error('Redis DEL error:', err);
       return false;
     }
   }
