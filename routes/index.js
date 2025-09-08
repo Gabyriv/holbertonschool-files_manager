@@ -1,5 +1,6 @@
 import express from 'express';
 import AppController from '../controllers/AppController';
+import UsersController from '../controllers/UsersController';
 
 export default function controllerRouting(app) {
   const router = express.Router();
@@ -12,5 +13,9 @@ export default function controllerRouting(app) {
 
   router.get('/stats', (req, res) => {
     AppController.getStats(req, res);
+  });
+
+  router.post('/users', (req, res) => {
+    UsersController.postNew(req, res);
   });
 }
