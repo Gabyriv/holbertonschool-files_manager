@@ -110,6 +110,92 @@ class FilesController {
       return res.status(500).json({ error: 'Server error' });
     }
   }
+
+  // GET /files/:id - return a single file document for the authenticated user
+  static async getShow(req, res) {
+    try {
+      const token = req.headers['x-token'];
+      if (!token) return res.status(401).json({ error: 'Unauthorized' });
+
+      const userIdStr = await redisClient.get(`auth_${token}`);
+      if (!userIdStr) return res.status(401).json({ error: 'Unauthorized' });
+
+      const filesCol = dbClient.filesCollection || dbClient.db.collection('files');
+
+      let fileId;
+      try {
+        fileId = new ObjectId(req.params.id);
+      } catch (e) {
+        // Invalid id - not found for this user
+        return res.status(404).json({ error: 'Not found' });
+      }
+
+      const file = await filesCol.findOne({ _id: fileId, userId: new ObjectId(userIdStr) });
+      if (!file) return res.status(404).json({ error: 'Not found' });
+
+      return res.status(200).json({
+        id: file._id.toString(),
+        userId: file.userId.toString(),
+        name: file.name,
+        type: file.type,
+        isPublic: Boolean(file.isPublic),
+        parentId: file.parentId === 0 ? 0 : file.parentId.toString(),
+      });
+    } catch (err) {
+      return res.status(500).json({ error: 'Server error' });
+    }
+  }
+
+  // GET /files - list files for the authenticated user, by parentId and page
+  static async getIndex(req, res) {
+    try {
+      const token = req.headers['x-token'];
+      if (!token) return res.status(401).json({ error: 'Unauthorized' });
+
+      const userIdStr = await redisClient.get(`auth_${token}`);
+      if (!userIdStr) return res.status(401).json({ error: 'Unauthorized' });
+
+      const filesCol = dbClient.filesCollection || dbClient.db.collection('files');
+
+      const { parentId = '0', page = '0' } = req.query;
+      const pageNum = Number.isNaN(parseInt(page, 10)) ? 0 : Math.max(0, parseInt(page, 10));
+      const pageSize = 20;
+
+      // Build match for parentId
+      let parentMatch;
+      if (!parentId || parentId === '0') {
+        parentMatch = 0;
+      } else {
+        try {
+          parentMatch = new ObjectId(parentId);
+        } catch (e) {
+          // Invalid parentId -> no results
+          return res.status(200).json([]);
+        }
+      }
+
+      const pipeline = [
+        { $match: { userId: new ObjectId(userIdStr), parentId: parentMatch } },
+        { $sort: { _id: 1 } },
+        { $skip: pageNum * pageSize },
+        { $limit: pageSize },
+      ];
+
+      const items = await filesCol.aggregate(pipeline).toArray();
+      const result = items.map((file) => ({
+        id: file._id.toString(),
+        userId: file.userId.toString(),
+        name: file.name,
+        type: file.type,
+        isPublic: Boolean(file.isPublic),
+        parentId: file.parentId === 0 ? 0 : file.parentId.toString(),
+      }));
+
+      return res.status(200).json(result);
+    } catch (err) {
+      return res.status(500).json({ error: 'Server error' });
+    }
+  }
 }
 
 export default FilesController;
