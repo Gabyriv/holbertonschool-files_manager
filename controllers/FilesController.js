@@ -196,6 +196,82 @@ class FilesController {
       return res.status(500).json({ error: 'Server error' });
     }
   }
+
+  // PUT /files/:id/publish - set isPublic = true for the owner's file
+  static async putPublish(req, res) {
+    try {
+      const token = req.headers['x-token'];
+      if (!token) return res.status(401).json({ error: 'Unauthorized' });
+
+      const userIdStr = await redisClient.get(`auth_${token}`);
+      if (!userIdStr) return res.status(401).json({ error: 'Unauthorized' });
+
+      const filesCol = dbClient.filesCollection || dbClient.db.collection('files');
+
+      let fileId;
+      try {
+        fileId = new ObjectId(req.params.id);
+      } catch (e) {
+        return res.status(404).json({ error: 'Not found' });
+      }
+
+      const ownerId = new ObjectId(userIdStr);
+      const existing = await filesCol.findOne({ _id: fileId, userId: ownerId });
+      if (!existing) return res.status(404).json({ error: 'Not found' });
+
+      await filesCol.updateOne({ _id: fileId, userId: ownerId }, { $set: { isPublic: true } });
+      const updated = await filesCol.findOne({ _id: fileId, userId: ownerId });
+
+      return res.status(200).json({
+        id: updated._id.toString(),
+        userId: updated.userId.toString(),
+        name: updated.name,
+        type: updated.type,
+        isPublic: Boolean(updated.isPublic),
+        parentId: updated.parentId === 0 ? 0 : updated.parentId.toString(),
+      });
+    } catch (err) {
+      return res.status(500).json({ error: 'Server error' });
+    }
+  }
+
+  // PUT /files/:id/unpublish - set isPublic = false for the owner's file
+  static async putUnpublish(req, res) {
+    try {
+      const token = req.headers['x-token'];
+      if (!token) return res.status(401).json({ error: 'Unauthorized' });
+
+      const userIdStr = await redisClient.get(`auth_${token}`);
+      if (!userIdStr) return res.status(401).json({ error: 'Unauthorized' });
+
+      const filesCol = dbClient.filesCollection || dbClient.db.collection('files');
+
+      let fileId;
+      try {
+        fileId = new ObjectId(req.params.id);
+      } catch (e) {
+        return res.status(404).json({ error: 'Not found' });
+      }
+
+      const ownerId = new ObjectId(userIdStr);
+      const existing = await filesCol.findOne({ _id: fileId, userId: ownerId });
+      if (!existing) return res.status(404).json({ error: 'Not found' });
+
+      await filesCol.updateOne({ _id: fileId, userId: ownerId }, { $set: { isPublic: false } });
+      const updated = await filesCol.findOne({ _id: fileId, userId: ownerId });
+
+      return res.status(200).json({
+        id: updated._id.toString(),
+        userId: updated.userId.toString(),
+        name: updated.name,
+        type: updated.type,
+        isPublic: Boolean(updated.isPublic),
+        parentId: updated.parentId === 0 ? 0 : updated.parentId.toString(),
+      });
+    } catch (err) {
+      return res.status(500).json({ error: 'Server error' });
+    }
+  }
 }
 
 export default FilesController;
