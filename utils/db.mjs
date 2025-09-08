@@ -1,7 +1,7 @@
 // utils/db.mjs
+import pkg from 'mongodb';
 
-import { MongoClient } from 'mongodb';
-
+const { MongoClient } = pkg;
 const DB_HOST = process.env.DB_HOST || 'localhost';
 const DB_PORT = process.env.DB_PORT || 27017;
 const DB_DATABASE = process.env.DB_DATABASE || 'files_manager';
@@ -12,8 +12,8 @@ class DBClient {
     MongoClient.connect(url, { useUnifiedTopology: true }, (error, client) => {
       if (!error) {
         this.db = client.db(DB_DATABASE);
-        this.users = this.db.collection('users');
-        this.files = this.db.collection('files');
+        this.usersCollection = this.db.collection('users');
+        this.filesCollection = this.db.collection('files');
       } else {
         console.log(error.message);
         this.db = false;
@@ -26,13 +26,11 @@ class DBClient {
   }
 
   async nbUsers() {
-    const userCount = this.users.countDocuments();
-    return userCount;
+    return this.usersCollection.countDocuments();
   }
 
   async nbFiles() {
-    const fileCount = this.files.countDocuments();
-    return fileCount;
+    return this.filesCollection.countDocuments();
   }
 }
 
