@@ -155,33 +155,33 @@ class FilesController {
       const userIdStr = await redisClient.get(`auth_${token}`);
       if (!userIdStr) return res.status(401).json({ error: 'Unauthorized' });
 
-      const filesCol = dbClient.filesCollection || dbClient.db.collection('files');
+      const filesCol = dbClient.filesCollection || (dbClient.db && dbClient.db.collection('files'));
+      if (!filesCol) return res.status(200).json([]);
 
       const { parentId = '0', page = '0' } = req.query;
       const pageNum = Number.isNaN(parseInt(page, 10)) ? 0 : Math.max(0, parseInt(page, 10));
       const pageSize = 20;
 
-      // Build match for parentId
-      let parentMatch;
+      // Build filter for parentId
+      const filter = { userId: new ObjectId(userIdStr) };
       if (!parentId || parentId === '0') {
-        parentMatch = 0;
+        // Be tolerant: match both numeric 0 and string '0'
+        filter.parentId = { $in: [0, '0'] };
       } else {
         try {
-          parentMatch = new ObjectId(parentId);
+          filter.parentId = new ObjectId(parentId);
         } catch (e) {
           // Invalid parentId -> no results
           return res.status(200).json([]);
         }
       }
 
-      const pipeline = [
-        { $match: { userId: new ObjectId(userIdStr), parentId: parentMatch } },
-        { $sort: { _id: 1 } },
-        { $skip: pageNum * pageSize },
-        { $limit: pageSize },
-      ];
-
-      const items = await filesCol.aggregate(pipeline).toArray();
+      const items = await filesCol
+        .find(filter)
+        .sort({ _id: 1 })
+        .skip(pageNum * pageSize)
+        .limit(pageSize)
+        .toArray();
       const result = items.map((file) => ({
         id: file._id.toString(),
         userId: file.userId.toString(),
