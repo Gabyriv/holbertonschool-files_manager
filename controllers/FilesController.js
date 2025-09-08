@@ -1,6 +1,7 @@
 import { v4 as uuidv4 } from 'uuid';
 import { promises as fs } from 'fs';
 import path from 'path';
+import mime from 'mime-types';
 import { ObjectId } from 'mongodb';
 import redisClient from '../utils/redis';
 import dbClient from '../utils/db';
@@ -268,6 +269,52 @@ class FilesController {
         isPublic: Boolean(updated.isPublic),
         parentId: updated.parentId === 0 ? 0 : updated.parentId.toString(),
       });
+    } catch (err) {
+      return res.status(500).json({ error: 'Server error' });
+    }
+  }
+
+  // GET /files/:id/data - return file content with proper MIME type
+  static async getFile(req, res) {
+    try {
+      const filesCol = dbClient.filesCollection || (dbClient.db && dbClient.db.collection('files'));
+      if (!filesCol) return res.status(404).json({ error: 'Not found' });
+
+      let fileId;
+      try {
+        fileId = new ObjectId(req.params.id);
+      } catch (e) {
+        return res.status(404).json({ error: 'Not found' });
+      }
+
+      const file = await filesCol.findOne({ _id: fileId });
+      if (!file) return res.status(404).json({ error: 'Not found' });
+
+      if (file.type === 'folder') {
+        return res.status(400).json({ error: "A folder doesn't have content" });
+      }
+
+      // If not public, ensure the requester is authenticated and the owner
+      if (!file.isPublic) {
+        const token = req.headers['x-token'];
+        if (!token) return res.status(404).json({ error: 'Not found' });
+        const userIdStr = await redisClient.get(`auth_${token}`);
+        if (!userIdStr) return res.status(404).json({ error: 'Not found' });
+        if (file.userId.toString() !== userIdStr) return res.status(404).json({ error: 'Not found' });
+      }
+
+      // Ensure local file exists and return its content
+      if (!file.localPath) return res.status(404).json({ error: 'Not found' });
+      let data;
+      try {
+        data = await fs.readFile(file.localPath);
+      } catch (e) {
+        return res.status(404).json({ error: 'Not found' });
+      }
+
+      const mimeType = mime.lookup(file.name) || 'application/octet-stream';
+      res.set('Content-Type', mimeType);
+      return res.status(200).send(data);
     } catch (err) {
       return res.status(500).json({ error: 'Server error' });
     }
