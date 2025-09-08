@@ -3,8 +3,12 @@ import { promises as fs } from 'fs';
 import path from 'path';
 import mime from 'mime-types';
 import { ObjectId } from 'mongodb';
+import Queue from 'bull';
 import redisClient from '../utils/redis';
 import dbClient from '../utils/db';
+
+// Bull queue for background thumbnail processing
+const fileQueue = new Queue('fileQueue');
 
 class FilesController {
   // POST /files
@@ -99,6 +103,21 @@ class FilesController {
 
       doc.localPath = localPath;
       const result = await filesCol.insertOne(doc);
+
+      // If image, enqueue background thumbnail generation job
+      if (type === 'image') {
+        try {
+          const job = {
+            userId: user._id.toString(),
+            fileId: result.insertedId.toString(),
+          };
+          await fileQueue.add(job);
+        } catch (e) {
+          // Do not fail the request if queueing fails; just log
+          // eslint-disable-next-line no-console
+          console.error('Failed to enqueue thumbnail job:', e);
+        }
+      }
       return res.status(201).json({
         id: result.insertedId.toString(),
         userId: user._id.toString(),
@@ -290,10 +309,6 @@ class FilesController {
       const file = await filesCol.findOne({ _id: fileId });
       if (!file) return res.status(404).json({ error: 'Not found' });
 
-      if (file.type === 'folder') {
-        return res.status(400).json({ error: "A folder doesn't have content" });
-      }
-
       // If not public, ensure the requester is authenticated and the owner
       if (!file.isPublic) {
         const token = req.headers['x-token'];
@@ -303,11 +318,21 @@ class FilesController {
         if (file.userId.toString() !== userIdStr) return res.status(404).json({ error: 'Not found' });
       }
 
-      // Ensure local file exists and return its content
+      if (file.type === 'folder') {
+        return res.status(400).json({ error: "A folder doesn't have content" });
+      }
+
+      // Determine which path to serve (thumbnail or original)
       if (!file.localPath) return res.status(404).json({ error: 'Not found' });
+      let targetPath = file.localPath;
+      const { size } = req.query || {};
+      if (size && ['100', '250', '500', 100, 250, 500].includes(size)) {
+        const suffix = typeof size === 'string' ? size : String(size);
+        targetPath = `${file.localPath}_${suffix}`;
+      }
       let data;
       try {
-        data = await fs.readFile(file.localPath);
+        data = await fs.readFile(targetPath);
       } catch (e) {
         return res.status(404).json({ error: 'Not found' });
       }
