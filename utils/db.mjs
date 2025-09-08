@@ -12,14 +12,33 @@ class DBClient {
     const url = `mongodb://${host}:${port}`;
 
     this.client = new MongoClient(url, { useUnifiedTopology: true });
-    // Start connection (non-blocking)
-    this.client.connect();
-    // Reference DB handle (works after connect is established)
-    this.db = this.client.db(this.databaseName);
+    // Track connection state; will be set true after a successful ping
+    this.connected = false;
+
+    // Start connection (non-blocking), set DB handle and perform a ping
+    this.client
+      .connect()
+      .then(async () => {
+        this.db = this.client.db(this.databaseName);
+        try {
+          // Send a ping to confirm a successful connection
+          await this.client.db('admin').command({ ping: 1 });
+          this.connected = true;
+        } catch (err) {
+          // eslint-disable-next-line no-console
+          console.error('MongoDB ping failed:', err);
+          this.connected = false;
+        }
+      })
+      .catch((err) => {
+        // eslint-disable-next-line no-console
+        console.error('MongoDB connection error:', err);
+        this.connected = false;
+      });
   }
 
   isAlive() {
-    return this.client.isConnected();
+    return this.connected === true;
   }
 
   async nbUsers() {
