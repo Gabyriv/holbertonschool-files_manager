@@ -1,5 +1,5 @@
 import express from 'express';
-import AppController from '../controllers/AppControllers.js';
+import AppController from '../controllers/AppController';
 
 export default function controllerRouting(app) {
   const router = express.Router();
